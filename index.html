@@ -148,6 +148,16 @@
   .winners h3 { margin-top:0; }
   .winner-item { padding:8px; background:#fff; border-radius:8px; margin-bottom:6px; border-left:4px solid #ffb300; }
 
+  .leaderboard { margin-top:20px; background:#f0faff; border-radius:12px; padding:15px; }
+  .leaderboard h3 { margin-top:0; }
+  .leaderboard table { width:100%; border-collapse:collapse; }
+  .leaderboard th, .leaderboard td { text-align:left; padding:8px 10px; }
+  .leaderboard th { color:#6ec6ff; font-size:0.85em; border-bottom:2px solid #d6f0ff; }
+  .leaderboard tr:nth-child(even) td { background:#fff; }
+  .leaderboard tr:nth-child(odd) td { background:#f7fcff; }
+  .leaderboard td:first-child, .leaderboard th:first-child { border-radius:8px 0 0 8px; text-align:center; width:40px; }
+  .leaderboard td:last-child, .leaderboard th:last-child { border-radius:0 8px 8px 0; }
+
   /* WISHES WALL */
   textarea { width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:1em; resize:vertical; min-height:80px; margin-bottom:10px; }
   .wish-item { background:#fff8f0; border-left:4px solid #ffb085; padding:12px; border-radius:8px; margin-bottom:10px; }
@@ -208,6 +218,11 @@
     <div class="winners">
       <h3>🏆 Người chiến thắng (2 suất 100k)</h3>
       <div id="winnerList"><p class="note">Chưa có ai trả lời đúng hết. Hãy là người đầu tiên!</p></div>
+    </div>
+
+    <div class="leaderboard">
+      <h3>📊 Bảng xếp hạng</h3>
+      <div id="leaderboardList"><p class="note">Chưa có ai làm bài.</p></div>
     </div>
   </div>
 
@@ -282,6 +297,7 @@ function fetchServerData() {
       renderWishes();
       renderWinners();
       renderMemories();
+      renderLeaderboard();
     })
     .catch(err => console.error('Lỗi tải dữ liệu:', err));
 }
@@ -364,6 +380,28 @@ function renderWinners() {
   list.innerHTML = winners.map((w,i) => `<div class="winner-item">🥇 #${i+1}: <b>${w.name}</b> — thưởng ${PRIZE} (${w.time})</div>`).join('');
 }
 
+function loadAttempts() {
+  return serverData.attempts || [];
+}
+function renderLeaderboard() {
+  const attempts = loadAttempts();
+  const list = document.getElementById('leaderboardList');
+  if (attempts.length === 0) {
+    list.innerHTML = '<p class="note">Chưa có ai làm bài.</p>';
+    return;
+  }
+  const sorted = [...attempts].sort((a, b) => b.score - a.score || new Date(a.time) - new Date(b.time));
+  const rows = sorted.map((a, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(a.name)}</td>
+      <td>${a.score}/${a.total}</td>
+      <td>${a.time}</td>
+    </tr>
+  `).join('');
+  list.innerHTML = `<table><tr><th>#</th><th>Tên</th><th>Điểm</th><th>Thời gian</th></tr>${rows}</table>`;
+}
+
 function submitQuiz() {
   const name = document.getElementById('playerName').value.trim();
   const result = document.getElementById('quiz-result');
@@ -389,11 +427,15 @@ function submitQuiz() {
     return;
   }
 
+  // Ghi nhận kết quả vào bảng xếp hạng (dù đúng hay sai)
+  postToServer({ type: 'attempt', name, score: correctCount, total: quizData.length });
+
   if (correctCount === quizData.length) {
     const winners = loadWinners();
     if (winners.find(w => w.name.toLowerCase() === name.toLowerCase())) {
       result.className = 'success';
       result.textContent = `🎉 Chính xác hết, ${name}! Bạn đã được ghi nhận trước đó rồi nhé.`;
+      setTimeout(fetchServerData, 1000);
     } else if (winners.length < MAX_WINNERS) {
       result.className = 'success';
       result.textContent = `🎉 CHÚC MỪNG ${name}! Bạn trả lời đúng hết, đang ghi nhận kết quả... 💰`;
@@ -409,10 +451,12 @@ function submitQuiz() {
     } else {
       result.className = 'success';
       result.textContent = `🎉 Chính xác hết, ${name}! Tiếc quá, đã có đủ 2 người thắng giải trước bạn rồi. Cảm ơn bạn đã tham gia! ❤️`;
+      setTimeout(fetchServerData, 1000);
     }
   } else {
     result.className = 'fail';
     result.textContent = `❌ Bạn trả lời đúng ${correctCount}/${quizData.length} câu. Thử lại nhé!`;
+    setTimeout(fetchServerData, 1000);
   }
 }
 /* =================== WISHES WALL =================== */
