@@ -447,10 +447,7 @@ function addWish() {
 
 /* =================== TIMELINE MEMORIES =================== */
 function loadMemories() {
-  return JSON.parse(localStorage.getItem('timelineMemories') || '[]');
-}
-function saveMemories(memories) {
-  localStorage.setItem('timelineMemories', JSON.stringify(memories));
+  return serverData.memories || [];
 }
 function renderMemories() {
   const memories = loadMemories();
@@ -463,6 +460,26 @@ function renderMemories() {
     </div>
   `).reverse().join('');
 }
+// Resize ảnh về tối đa 500px chiều rộng, nén JPEG để vừa giới hạn ô của Google Sheet
+function resizeImage(file, maxWidth) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ev => { img.src = ev.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 function addMemory() {
   const author = document.getElementById('memoryAuthor').value.trim();
   const text = document.getElementById('memoryText').value.trim();
@@ -474,21 +491,18 @@ function addMemory() {
     return;
   }
 
-  function save(image) {
-    const memories = loadMemories();
-    memories.push({ author, text, image });
-    saveMemories(memories);
-    document.getElementById('memoryText').value = '';
-    fileInput.value = '';
-    renderMemories();
+  function send(image) {
+    postToServer({ type: 'memory', author, text, image: image || '' }).then(() => {
+      document.getElementById('memoryText').value = '';
+      fileInput.value = '';
+      setTimeout(fetchServerData, 1000);
+    });
   }
 
   if (file) {
-    const reader = new FileReader();
-    reader.onload = ev => save(ev.target.result);
-    reader.readAsDataURL(file);
+    resizeImage(file, 500).then(send);
   } else {
-    save(null);
+    send(null);
   }
 }
 renderMemories();
