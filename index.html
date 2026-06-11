@@ -208,7 +208,6 @@
     <div class="winners">
       <h3>🏆 Người chiến thắng (2 suất 100k)</h3>
       <div id="winnerList"><p class="note">Chưa có ai trả lời đúng hết. Hãy là người đầu tiên!</p></div>
-      <button class="btn" style="background:#bbb; margin-top:10px; font-size:0.8em; padding:8px 15px;" onclick="resetWinners()">Reset (chỉ dành cho admin)</button>
     </div>
   </div>
 
@@ -270,6 +269,31 @@ if (localStorage.getItem('heroHeartLiked') === '1') {
   });
 }
 
+/* =================== SHARED DATA (Google Sheet) =================== */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbycnqFE2QVimAXQ9RsU6H9dUmeHrIY0Tu7CzOgsLKNYk8LMhambOQcj_dOCAbZRRjZB/exec";
+
+let serverData = { wishes: [], winners: [] };
+
+function fetchServerData() {
+  return fetch(SCRIPT_URL)
+    .then(res => res.json())
+    .then(data => {
+      serverData = data;
+      renderWishes();
+      renderWinners();
+    })
+    .catch(err => console.error('Lỗi tải dữ liệu:', err));
+}
+
+function postToServer(payload) {
+  return fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+}
+
 /* =================== QUIZ =================== */
 // ✏️ SỬA NỘI DUNG CÂU HỎI & ĐÁP ÁN ĐÚNG (correct: index 0-3) Ở ĐÂY
 const quizData = [
@@ -327,10 +351,7 @@ const MAX_WINNERS = 2;
 const PRIZE = "100.000đ";
 
 function loadWinners() {
-  return JSON.parse(localStorage.getItem('quizWinners') || '[]');
-}
-function saveWinners(winners) {
-  localStorage.setItem('quizWinners', JSON.stringify(winners));
+  return serverData.winners || [];
 }
 function renderWinners() {
   const winners = loadWinners();
@@ -340,12 +361,6 @@ function renderWinners() {
     return;
   }
   list.innerHTML = winners.map((w,i) => `<div class="winner-item">🥇 #${i+1}: <b>${w.name}</b> — thưởng ${PRIZE} (${w.time})</div>`).join('');
-}
-function resetWinners() {
-  if (confirm('Xóa danh sách người chiến thắng?')) {
-    localStorage.removeItem('quizWinners');
-    renderWinners();
-  }
 }
 
 function submitQuiz() {
@@ -374,16 +389,22 @@ function submitQuiz() {
   }
 
   if (correctCount === quizData.length) {
-    let winners = loadWinners();
+    const winners = loadWinners();
     if (winners.find(w => w.name.toLowerCase() === name.toLowerCase())) {
       result.className = 'success';
       result.textContent = `🎉 Chính xác hết, ${name}! Bạn đã được ghi nhận trước đó rồi nhé.`;
     } else if (winners.length < MAX_WINNERS) {
-      winners.push({ name, time: new Date().toLocaleString('vi-VN') });
-      saveWinners(winners);
-      renderWinners();
       result.className = 'success';
-      result.textContent = `🎉 CHÚC MỪNG ${name}! Bạn trả lời đúng hết và là người chiến thắng #${winners.length}! Nhận ngay ${PRIZE} 💰`;
+      result.textContent = `🎉 CHÚC MỪNG ${name}! Bạn trả lời đúng hết, đang ghi nhận kết quả... 💰`;
+      postToServer({ type: 'winner', name }).then(() => {
+        setTimeout(() => {
+          fetchServerData().then(() => {
+            const updated = loadWinners();
+            const rank = updated.findIndex(w => w.name.toLowerCase() === name.toLowerCase()) + 1;
+            result.textContent = `🎉 CHÚC MỪNG ${name}! Bạn là người chiến thắng #${rank || updated.length}! Nhận ngay ${PRIZE} 💰`;
+          });
+        }, 1000);
+      });
     } else {
       result.className = 'success';
       result.textContent = `🎉 Chính xác hết, ${name}! Tiếc quá, đã có đủ 2 người thắng giải trước bạn rồi. Cảm ơn bạn đã tham gia! ❤️`;
@@ -393,14 +414,9 @@ function submitQuiz() {
     result.textContent = `❌ Bạn trả lời đúng ${correctCount}/${quizData.length} câu. Thử lại nhé!`;
   }
 }
-renderWinners();
-
 /* =================== WISHES WALL =================== */
 function loadWishes() {
-  return JSON.parse(localStorage.getItem('birthdayWishes') || '[]');
-}
-function saveWishes(wishes) {
-  localStorage.setItem('birthdayWishes', JSON.stringify(wishes));
+  return serverData.wishes || [];
 }
 function renderWishes() {
   const wishes = loadWishes();
@@ -423,13 +439,11 @@ function addWish() {
     alert('Vui lòng nhập tên và lời chúc!');
     return;
   }
-  const wishes = loadWishes();
-  wishes.push({ author, text });
-  saveWishes(wishes);
-  document.getElementById('wishText').value = '';
-  renderWishes();
+  postToServer({ type: 'wish', author, text }).then(() => {
+    document.getElementById('wishText').value = '';
+    setTimeout(fetchServerData, 1000);
+  });
 }
-renderWishes();
 
 /* =================== TIMELINE MEMORIES =================== */
 function loadMemories() {
@@ -478,6 +492,7 @@ function addMemory() {
   }
 }
 renderMemories();
+fetchServerData();
 </script>
 </body>
 </html>
